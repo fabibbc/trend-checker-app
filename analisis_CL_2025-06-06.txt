@@ -1,0 +1,11 @@
+📅 Fecha: 2025-06-06 | Región: CL
+
+📈 Producto que más subió: aire acondicionado (+5)
+📉 Producto que más bajó: estufa (-9)
+
+🔥 Ranking por pico de interés máximo:
+1. estufa: 100
+2. aire acondicionado: 84
+3. ventilador: 37
+4. calefactor: 32
+5. termoeléctrico: 0
