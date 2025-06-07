@@ -1,15 +1,38 @@
 import streamlit as st
 from pytrends.request import TrendReq
 import pandas as pd
-import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
 from io import BytesIO
 
-# Configuración inicial
+# ---------- CONFIG ----------
 st.set_page_config(page_title="Tendencias Google", layout="wide")
-st.title("🔍 Analizador de Tendencias con Google Trends")
+st.markdown(
+    """
+    <style>
 
-# Opciones de país
+    /* Cambiar tamaño de fuente global */
+    html, body, [class*="css"]  {
+        font-size: 14px;
+    }
+    .block-container {
+        max-width: 1100px;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        margin: auto;
+    }
+    textarea {
+        max-height: 200px !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+st.title("🔍 Analizador de Tendencias con Google Trends")
+st.markdown("Obtené una visualización rápida y clara de cómo evoluciona el interés por tus productos en distintas regiones del mundo. Ideal para detectar oportunidades de mercado. 🚀")
+
+# ---------- REGIONES Y CATEGORÍAS ----------
 regiones = {
     "Chile": "CL",
     "Argentina": "AR",
@@ -18,35 +41,62 @@ regiones = {
     "México": "MX"
 }
 
-# FECHA Y REGIÓN LADO A LADO ARRIBA
-col_region, col_fecha = st.columns(2)
-with col_region:
-    region_nombre = st.selectbox("🌍 Elegí una región", list(regiones.keys()))
-region = regiones[region_nombre]
+# ---------- REGIÓN ----------
+st.markdown("### 🌍 Región")
+region_nombre = st.selectbox("Seleccioná una región", list(regiones.keys()), index=0)
+region = regiones[region_nombre]  # acá tomamos el código que necesita pytrends
 
-with col_fecha:
-    st.markdown("### 📅 Elegí el período de análisis")
-    tipo_rango = st.radio("¿Querés un período predefinido o personalizado?", ["Predefinido", "Personalizado"])
-    if tipo_rango == "Predefinido":
-        opcion_periodo = st.selectbox("Seleccioná el período", ["Última semana", "Últimos 30 días", "Últimos 12 meses"])
-        if opcion_periodo == "Última semana":
-            fecha_inicio = datetime.today() - timedelta(days=7)
-        elif opcion_periodo == "Últimos 30 días":
-            fecha_inicio = datetime.today() - timedelta(days=30)
-        else:
-            fecha_inicio = datetime.today() - timedelta(days=365)
-        fecha_fin = datetime.today()
-    else:
+# ---------- FILTRO DE FECHAS ----------
+st.markdown("### 📅 Filtro de Fechas")
+tipo_filtro = st.radio("Filtro de Fechas", ["Predefinido", "Personalizado"], horizontal=True)
+
+if tipo_filtro == "Predefinido":
+    col1, _ = st.columns([2, 1])  # para que no ocupe todo el ancho
+    with col1:
+        rango_predefinido = st.selectbox(
+            "Rango de fechas",
+            ["Última semana", "Últimas 4 semanas", "Últimos 3 meses", "Último año"],
+            index=0
+        )
+    # Lógica para traducir selección a fechas
+    hoy = pd.to_datetime("today")
+    if rango_predefinido == "Última semana":
+        fecha_inicio = hoy - pd.Timedelta(days=7)
+    elif rango_predefinido == "Últimas 4 semanas":
+        fecha_inicio = hoy - pd.Timedelta(weeks=4)
+    elif rango_predefinido == "Últimos 3 meses":
+        fecha_inicio = hoy - pd.DateOffset(months=3)
+    else:  # Último año
+        fecha_inicio = hoy - pd.DateOffset(years=1)
+    fecha_fin = hoy
+
+else:
+    col1, col2 = st.columns(2)
+    with col1:
         fecha_inicio = st.date_input("Desde", pd.to_datetime("2023-01-01"))
+    with col2:
         fecha_fin = st.date_input("Hasta", pd.to_datetime("today"))
-        if fecha_inicio >= fecha_fin:
-            st.error("La fecha de inicio debe ser anterior a la de fin.")
-            st.stop()
 
-# INPUT PRODUCTOS (ABAJO DE FECHA Y REGIÓN)
-productos_input = st.text_area("🛒 Ingresá los productos separados por coma", "aire acondicionado, estufa, ventilador")
+    if fecha_inicio >= fecha_fin:
+        st.error("La fecha de inicio debe ser anterior a la de fin.")
+        st.stop()
 
-# BOTÓN ANALIZAR (DESPUÉS DEL INPUT PRODUCTOS)
+# ---------- RANGO MOSTRADO ----------
+st.success(f"🔍 Rango seleccionado: {fecha_inicio.strftime('%d/%m/%Y')} hasta {fecha_fin.strftime('%d/%m/%Y')}")
+
+# ---------- INPUT CENTRADO ----------
+st.markdown("### 🛒 ¿Qué productos querés analizar?")
+sugerencia = ", ".join(["iPhone 14", "Samsung Galaxy S23", "Xiaomi Redmi Note 11", "Motorola Moto G100", "Nokia 3310"])
+with st.container():
+    productos_input = st.text_area(
+        "O Ingresá los productos separados por coma",
+        value=sugerencia if sugerencia else "",
+        height=120,
+        key="productos_input"
+    )
+
+
+# ---------- BOTÓN DE ANÁLISIS ----------
 if st.button("📊 Analizar Tendencias"):
     productos = [p.strip() for p in productos_input.split(",") if p.strip()]
     if not productos:
@@ -62,28 +112,24 @@ if st.button("📊 Analizar Tendencias"):
             df = df.drop(columns=['isPartial'])
             st.session_state.df = df
 
-# Inicializamos sesión para guardar datos
+# ---------- ANÁLISIS ----------
+def recargar():
+    st.session_state.df = None
+    st.experimental_rerun()
+
 if 'df' not in st.session_state:
     st.session_state.df = None
 
-# FUNCIONES para recargar y analizar (por si querés modularizar)
-def recargar():
-    st.session_state.df = None
-    st.rerun()
-
-
-# SI HAY DATOS, MOSTRAR ANÁLISIS ARRIBA Y GRÁFICO AL FINAL
 if st.session_state.df is not None:
     df = st.session_state.df
     fecha = datetime.now().strftime("%Y-%m-%d")
 
-    # Análisis de tendencias organizado, arriba
     cambios = df.iloc[-1] - df.iloc[0]
     subida = cambios.idxmax()
     bajada = cambios.idxmin()
     picos = df.max().sort_values(ascending=False)
 
-    st.subheader(f"📊 Análisis de Tendencias en {region_nombre}")
+    st.subheader(f"📈 Análisis de Tendencias en {region_nombre}")
 
     col1, col2, col3 = st.columns([1, 2, 2])
     with col1:
@@ -99,17 +145,14 @@ if st.session_state.df is not None:
         for i, (producto, valor) in enumerate(picos.items(), start=1):
             st.markdown(f"{i}. **{producto}**: {valor}")
 
-    # Explicación oculta
     with st.expander("❓ Cómo interpretar el gráfico"):
         st.write("""
         - Cada línea representa la evolución del interés de búsqueda relativo de un producto.
         - Los valores van de 0 a 100, donde 100 es el pico máximo de popularidad durante el período.
         - Cambios positivos significan que el interés subió, negativos que bajó.
-        - Usá esta info para detectar tendencias y oportunidades.
         """)
 
-    # GRÁFICO MÁS PEQUEÑO Y AL FINAL
-    st.subheader(f"📈 Tendencias de búsqueda en {region_nombre}")
+    st.markdown("### 📊 Gráfico de Tendencias")
     fig, ax = plt.subplots(figsize=(10, 4))
     df.plot(ax=ax)
     ax.set_title(f"Tendencias - {region_nombre} - {fecha}")
@@ -119,36 +162,27 @@ if st.session_state.df is not None:
     ax.legend(title="Producto", loc='upper left')
     st.pyplot(fig)
 
-    # BOTONES DESCARGA JUNTOS ABAJO
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
-        df_excel = df.rename(columns={col: f"Interés de búsqueda: {col}" for col in df.columns})
+        df_excel = df.rename(columns={col: f"Interés: {col}" for col in df.columns})
         df_excel = df_excel.reset_index()
         df_excel['date'] = df_excel['date'].dt.strftime('%Y-%m-%d')
         df_excel = df_excel.rename(columns={'date': 'Fecha'})
         fila_explicativa = {
-            col: "Cada número representa el interés relativo (0-100)" if col != "Fecha" else "Fecha de la semana"
-            for col in df_excel.columns
+            col: "Interés relativo (0-100)" if col != "Fecha" else "Fecha" for col in df_excel.columns
         }
         df_excel = pd.concat([pd.DataFrame([fila_explicativa]), df_excel], ignore_index=True)
-
         excel_buffer = BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df_excel.to_excel(writer, index=False, sheet_name='Tendencias')
         excel_buffer.seek(0)
+        st.download_button("📄 Descargar Excel", data=excel_buffer, file_name=f"tendencias_{region}_{fecha}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
-        st.download_button(
-            "📄 Descargar Excel",
-            data=excel_buffer,
-            file_name=f"tendencias_{region}_{fecha}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
     with col_btn2:
         buffer = BytesIO()
         fig.savefig(buffer, format='png')
         buffer.seek(0)
         st.download_button("🖼️ Descargar Gráfico PNG", data=buffer, file_name=f"grafico_{region}_{fecha}.png", mime="image/png")
 
-    # Botón recargar al lado de los botones de descarga
     if st.button("🔄 Recargar Datos"):
         recargar()
