@@ -2,3 +2,4 @@ streamlit
 pytrends
 matplotlib
 pandas
+openpyxl
